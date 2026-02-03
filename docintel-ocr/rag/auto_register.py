@@ -2,7 +2,7 @@ import sys
 import sqlite3
 
 
-DB = "documents.db"
+DB = "rag/documents.db"
 
 
 def register(doc):

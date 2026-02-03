@@ -68,6 +68,16 @@ async function listPDFFiles() {
 async function processFile(fileName) {
 
   console.log(`\nProcessing: ${fileName}`);
+  const { execSync } = require("child_process");
+
+// Auto-register document
+  try {
+    execSync(`python rag/auto_register.py "${fileName}"`);
+    console.log("Registered in metadata DB ✅");
+  } catch (e) {
+    console.log("Registration skipped / failed ⚠️");
+  }
+
 
   const container =
     blobClient.getContainerClient(CONTAINER);

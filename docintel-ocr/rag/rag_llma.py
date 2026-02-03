@@ -60,11 +60,11 @@
 #         break
 
 #     print("\nAnswer:\n", ask(q), "\n")
-
 import os
 import json
 import uuid
 import sqlite3
+import re
 
 from datetime import datetime
 
@@ -74,11 +74,57 @@ from langchain_ollama import OllamaLLM
 
 
 # ------------------------
-# CONFIG
+# PATH CONFIG (IMPORTANT)
 # ------------------------
 
-MODEL_NAME = "llama3.2:3b"     # change if needed
-SNAPSHOT_DIR = "evidence_snapshots"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "documents.db")
+DB_DIR = os.path.join(BASE_DIR, "db")
+SNAPSHOT_DIR = os.path.join(BASE_DIR, "evidence_snapshots")
+
+
+# ------------------------
+# HELPERS
+# ------------------------
+
+def normalize(name):
+    """
+    Normalize filenames for matching
+    """
+    return name.lower().replace(" ", "_").replace(".pdf", "")
+
+
+def get_latest_versions():
+
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    rows = cur.execute("""
+        SELECT trial_id, doc_type, blob_path, version
+        FROM documents
+        WHERE status='approved'
+    """).fetchall()
+
+    conn.close()
+
+
+    latest = {}
+
+    for trial, dtype, blob, v in rows:
+
+        key = (trial, dtype)
+
+        try:
+            num = float(v.replace("v", ""))
+        except:
+            num = 0.0
+
+
+        if key not in latest or num > latest[key][0]:
+            latest[key] = (num, blob)
+
+
+    return latest
 
 
 # ------------------------
@@ -90,37 +136,24 @@ embeddings = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 
+
 # Load Vector DB
 db = FAISS.load_local(
-    "db",
+    DB_DIR,
     embeddings,
     allow_dangerous_deserialization=True
 )
 
+
 # LLM
 llm = OllamaLLM(
-    model=MODEL_NAME
+    model="llama3.2:3b"
 )
+
 
 # Ensure snapshot folder exists
 os.makedirs(SNAPSHOT_DIR, exist_ok=True)
 
-def is_approved(doc_name):
-
-    conn = sqlite3.connect("documents.db")
-    cur = conn.cursor()
-
-    res = cur.execute("""
-        SELECT status FROM documents
-        WHERE blob_path = ?
-    """, (doc_name,)).fetchone()
-
-    conn.close()
-
-    if not res:
-        return False
-
-    return res[0] == "approved"
 
 # ------------------------
 # MAIN QUERY
@@ -128,17 +161,32 @@ def is_approved(doc_name):
 
 def ask(question):
 
-    # Get BEST match only
-    # docs = db.similarity_search(question, k=1)
-    docs_all = db.similarity_search(question, k=5)
+    # Search wide
+    docs_all = db.similarity_search(question, k=15)
 
+    if not docs_all:
+        return "No evidence found"
+
+
+    # Get allowed docs from registry
+    latest_map = get_latest_versions()
+
+
+    allowed = set()
+
+    for (_, blob) in latest_map.values():
+        allowed.add(normalize(blob))
+
+
+    # Filter vectors
     docs = []
 
     for d in docs_all:
 
-        docname = d.metadata.get("doc", "") + ".pdf"
+        vec_doc = normalize(d.metadata.get("doc", ""))
 
-        if is_approved(docname):
+        if vec_doc in allowed:
+
             docs.append(d)
 
         if len(docs) == 1:
@@ -146,33 +194,36 @@ def ask(question):
 
 
     if not docs:
-        return "No evidence found"
+        return "No evidence found (filtered by registry)"
 
 
-    d = docs[0]   # Top result
+    # Best doc
+    d = docs[0]
 
 
-    # Unique Answer ID
+    # ------------------------
+    # META
+    # ------------------------
+
     answer_id = "A" + uuid.uuid4().hex[:8]
 
-    # Timestamp
     timestamp = datetime.utcnow().isoformat()
 
 
-    # Metadata
     doc = d.metadata.get("doc", "Unknown") + ".pdf"
     section = d.metadata.get("section", "Unknown")
     page = d.metadata.get("page", "Unknown")
     para = d.metadata.get("para", "Unknown")
 
-    version = "v1.0"   # Optional
+    version = "v1.0"
 
 
-    # Clean Text
+    # ------------------------
+    # QUOTE
+    # ------------------------
+
     text = d.page_content.replace("\n", " ").strip()
 
-
-    # Take first 2 sentences
     sentences = text.split(". ")
 
     quote = ". ".join(sentences[:2])
@@ -182,7 +233,7 @@ def ask(question):
 
 
     # ------------------------
-    # Build Snapshot
+    # SNAPSHOT
     # ------------------------
 
     snapshot = {
@@ -197,14 +248,14 @@ def ask(question):
     }
 
 
-    file_path = f"{SNAPSHOT_DIR}/{answer_id}.json"
+    file_path = os.path.join(SNAPSHOT_DIR, f"{answer_id}.json")
 
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(snapshot, f, indent=2)
 
 
     # ------------------------
-    # Build LLM Context
+    # LLM
     # ------------------------
 
     context = d.page_content
@@ -227,12 +278,11 @@ Rules:
 """
 
 
-    # Generate Answer
     answer = llm.invoke(prompt)
 
 
     # ------------------------
-    # Final Output
+    # OUTPUT
     # ------------------------
 
     evidence_text = f"""
@@ -266,6 +316,7 @@ if __name__ == "__main__":
 
     print("RAG System Ready ✅")
     print("Type 'exit' to quit\n")
+
 
     while True:
 
