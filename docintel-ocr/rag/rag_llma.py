@@ -349,7 +349,6 @@ import json
 import uuid
 import sqlite3
 import re
-
 from datetime import datetime
 
 from langchain_community.vectorstores import FAISS
@@ -366,6 +365,21 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "documents.db")
 DB_DIR = os.path.join(BASE_DIR, "db")
 SNAPSHOT_DIR = os.path.join(BASE_DIR, "evidence_snapshots")
+
+
+# ------------------------
+# INIT MODELS (ONCE)
+# ------------------------
+
+embeddings = HuggingFaceEmbeddings(
+    model_name="sentence-transformers/all-MiniLM-L6-v2"
+)
+
+llm = OllamaLLM(
+    model="llama3.2:3b"
+)
+
+os.makedirs(SNAPSHOT_DIR, exist_ok=True)
 
 
 # ------------------------
@@ -406,28 +420,22 @@ def get_latest_versions():
     return latest
 
 
-# ------------------------
-# INIT
-# ------------------------
+def load_vector_db():
+    """
+    Reload FAISS every time (HOT RELOAD)
+    """
 
-embeddings = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2"
-)
+    if not os.path.exists(DB_DIR):
+        raise Exception("Vector DB not found")
 
-
-db = FAISS.load_local(
-    DB_DIR,
-    embeddings,
-    allow_dangerous_deserialization=True
-)
+    return
 
 
-llm = OllamaLLM(
-    model="llama3.2:3b"
-)
-
-
-os.makedirs(SNAPSHOT_DIR, exist_ok=True)
+    FAISS.load_local(
+        DB_DIR,
+        embeddings,
+        allow_dangerous_deserialization=True
+    )
 
 
 # ------------------------
@@ -435,6 +443,13 @@ os.makedirs(SNAPSHOT_DIR, exist_ok=True)
 # ------------------------
 
 def ask(question):
+
+    # 🔥 RELOAD VECTOR DB EVERY QUERY
+    db = FAISS.load_local(
+        DB_DIR,
+        embeddings,
+        allow_dangerous_deserialization=True
+    )
 
     # Search vectors
     docs_all = db.similarity_search(question, k=15)
@@ -470,7 +485,6 @@ def ask(question):
         return "No evidence found (filtered by registry)"
 
 
-    # Best match
     d = docs[0]
 
 
@@ -496,22 +510,20 @@ def ask(question):
 
     text = d.page_content.replace("\n", " ").strip()
 
-# Split into sentences
     sentences = re.split(r'(?<=[.!?])\s+', text)
 
-    # Take first 2–3 sentences (for context)
     chunk = " ".join(sentences[:3]).strip()
+
     words = chunk.split()
 
-    MAX_EVIDENCE_WORDS = 30
+    MAX_WORDS = 30
 
-    if len(words) > MAX_EVIDENCE_WORDS:
-        quote = " ".join(words[:MAX_EVIDENCE_WORDS]) + "..."
+    if len(words) > MAX_WORDS:
+        quote = " ".join(words[:MAX_WORDS]) + "..."
     else:
         quote = chunk
 
-    # Ensure punctuation
-    # Ensure punctuation
+
     if not quote.endswith((".", "!", "?")):
         quote += "."
 
@@ -539,7 +551,7 @@ def ask(question):
 
 
     # ------------------------
-    # LLM (LONG ANSWER)
+    # LLM
     # ------------------------
 
     context = d.page_content
@@ -559,7 +571,6 @@ Question:
 Rules:
 - Give detailed explanation
 - No hallucination
-- Cite only from context
 """
 
 
@@ -600,7 +611,6 @@ if __name__ == "__main__":
 
     print("RAG System Ready ✅")
     print("Type 'exit' to quit\n")
-
 
     while True:
 

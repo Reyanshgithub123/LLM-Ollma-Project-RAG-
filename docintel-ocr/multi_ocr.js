@@ -1,7 +1,10 @@
 require("dotenv").config();
 
+console.log("🔥 SINGLE FILE OCR MODE 🔥");
+
 const fs = require("fs");
 const path = require("path");
+const { execSync } = require("child_process");
 
 const transform = require("./transform");
 
@@ -10,138 +13,136 @@ const {
   AzureKeyCredential
 } = require("@azure/ai-form-recognizer");
 
-const {
-  BlobServiceClient
-} = require("@azure/storage-blob");
 
-
+// --------------------
 // ENV
+// --------------------
+
 const endpoint = process.env.AZURE_OCR_ENDPOINT;
 const key = process.env.AZURE_OCR_KEY;
 
-const AZURE_STORAGE_CONNECTION =
-  process.env.AZURE_STORAGE_CONNECTION_STRING;
 
+// --------------------
+// CLIENT
+// --------------------
 
-// Clients
 const ocrClient = new DocumentAnalysisClient(
   endpoint,
   new AzureKeyCredential(key)
 );
 
-const blobClient = BlobServiceClient.fromConnectionString(
-  AZURE_STORAGE_CONNECTION
-);
 
-
+// --------------------
 // CONFIG
-const CONTAINER = "raw-documents";
+// --------------------
+
+const INPUT_FILE = process.argv[2];
 const OUTPUT_DIR = "./ocr_outputs";
 
 
-// Create output folder
+// --------------------
+// VALIDATION
+// --------------------
+
+if (!INPUT_FILE) {
+  console.error("❌ No file provided");
+  process.exit(1);
+}
+
+if (!fs.existsSync(INPUT_FILE)) {
+  console.error("❌ File not found:", INPUT_FILE);
+  process.exit(1);
+}
+
+
+// --------------------
+// OUTPUT DIR
+// --------------------
+
 if (!fs.existsSync(OUTPUT_DIR)) {
-  fs.mkdirSync(OUTPUT_DIR);
+  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 }
 
 
-// Get all PDFs from blob
-async function listPDFFiles() {
+// --------------------
+// MAIN
+// --------------------
 
-  const container =
-    blobClient.getContainerClient(CONTAINER);
+async function run() {
 
-  const files = [];
+  const fileName = path.basename(INPUT_FILE);
 
-  for await (const blob of container.listBlobsFlat()) {
-
-    if (blob.name.endsWith(".pdf")) {
-      files.push(blob.name);
-    }
-  }
-
-  return files;
-}
+  console.log("Processing:", fileName);
 
 
-// OCR One File
-async function processFile(fileName) {
+  // --------------------
+  // Register
+  // --------------------
 
-  console.log(`\nProcessing: ${fileName}`);
-  const { execSync } = require("child_process");
-
-// Auto-register document
   try {
     execSync(`python rag/auto_register.py "${fileName}"`);
-    console.log("Registered in metadata DB ✅");
-  } catch (e) {
-    console.log("Registration skipped / failed ⚠️");
+    console.log("Registered ✅");
+  }
+  catch {
+    console.log("Registration skipped ⚠️");
   }
 
 
-  const container =
-    blobClient.getContainerClient(CONTAINER);
+  // --------------------
+  // Read file
+  // --------------------
 
-  const blob =
-    container.getBlockBlobClient(fileName);
+  const buffer = fs.readFileSync(INPUT_FILE);
 
 
-  // Generate SAS URL (valid for 1 hour)
-  const sasUrl = await blob.generateSasUrl({
-    permissions: "r",
-    expiresOn: new Date(Date.now() + 60 * 60 * 1000)
-  });
+  // --------------------
+  // OCR
+  // --------------------
 
+  console.log("Running OCR...");
 
   const poller =
-    await ocrClient.beginAnalyzeDocumentFromUrl(
+    await ocrClient.beginAnalyzeDocument(
       "prebuilt-layout",
-      sasUrl
+      buffer
     );
 
   const result = await poller.pollUntilDone();
 
+  console.log("OCR done ✅");
 
+
+  // --------------------
   // Transform
+  // --------------------
+
   const docId = fileName
     .replace(".pdf", "")
     .replace(/\s+/g, "_");
 
+
   const clean = transform(result, docId);
 
 
+  // --------------------
   // Save
+  // --------------------
+
+  const outPath =
+    path.join(OUTPUT_DIR, `${docId}.json`);
+
   fs.writeFileSync(
-    `${OUTPUT_DIR}/${docId}.json`,
+    outPath,
     JSON.stringify(clean, null, 2)
   );
 
+  console.log("Saved →", outPath, "✅");
 
-  console.log(`Saved → ${docId}.json ✅`);
+  console.log("\nPIPELINE COMPLETE 🔥");
 }
 
 
-// MAIN
-async function runBatchOCR() {
-
-  console.log("Fetching PDF list...");
-
-  const files = await listPDFFiles();
-
-  console.log(`Found ${files.length} PDFs`);
-
-  for (const file of files) {
-
-    try {
-      await processFile(file);
-    }
-    catch (err) {
-      console.error("Error:", file, err.message);
-    }
-  }
-
-  console.log("\nBatch OCR Done 🔥");
-}
-
-
-runBatchOCR();
+run().catch(err => {
+  console.error("❌ OCR Failed:", err);
+  process.exit(1);
+});

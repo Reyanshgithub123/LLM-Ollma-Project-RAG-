@@ -26,3 +26,11 @@ export const askQuestion = async (q: string) => {
     question: q
   });
 };
+
+export const getAuditLogs = () => {
+  return api.get("/audit/logs");
+};
+
+export const getStats = () => {
+  return api.get("/audit/stats");
+};

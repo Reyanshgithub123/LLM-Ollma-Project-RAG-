@@ -8,8 +8,22 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.documents import Document
 
 
-DATA_DIR = "../ocr_outputs"
+# ------------------------
+# PATHS (FIXED)
+# ------------------------
 
+BASE = os.path.dirname(os.path.abspath(__file__))
+
+OCR_DIR = os.path.abspath(
+    os.path.join(BASE, "..", "ocr_outputs")
+)
+
+DB_DIR = os.path.join(BASE, "db")
+
+
+# ------------------------
+# HELPERS
+# ------------------------
 
 def detect_section(text):
 
@@ -26,6 +40,10 @@ def detect_section(text):
     return None
 
 
+# ------------------------
+# INIT
+# ------------------------
+
 splitter = RecursiveCharacterTextSplitter(
     chunk_size=800,
     chunk_overlap=100
@@ -35,20 +53,36 @@ embeddings = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 
+
+# Ensure DB folder exists
+os.makedirs(DB_DIR, exist_ok=True)
+
+
 all_docs = []
 
 
-for file in os.listdir(DATA_DIR):
+# ------------------------
+# LOAD OCR FILES
+# ------------------------
+
+if not os.path.exists(OCR_DIR):
+    raise Exception(f"OCR folder not found: {OCR_DIR}")
+
+
+for file in os.listdir(OCR_DIR):
 
     if not file.endswith(".json"):
         continue
 
+
     doc_id = file.replace(".json", "")
 
-    path = os.path.join(DATA_DIR, file)
+    path = os.path.join(OCR_DIR, file)
+
 
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
+
 
     current_section = "Introduction"
 
@@ -65,16 +99,17 @@ for file in os.listdir(DATA_DIR):
 
             text = line["text"].strip()
 
+
             sec = detect_section(text)
 
             if sec:
                 current_section = sec
 
 
-            # New paragraph if empty line
             if text == "":
                 para_no += 1
                 continue
+
 
             buffer.append(text)
 
@@ -99,9 +134,16 @@ for file in os.listdir(DATA_DIR):
             )
 
 
-# Build DB
+# ------------------------
+# BUILD VECTOR DB
+# ------------------------
+
+if not all_docs:
+    raise Exception("No OCR data found to index")
+
+
 db = FAISS.from_documents(all_docs, embeddings)
 
-db.save_local("db")
+db.save_local(DB_DIR)
 
-print("Vector DB with doc+section+page+para built ✅")
+print("Vector DB built at:", DB_DIR, "✅")
