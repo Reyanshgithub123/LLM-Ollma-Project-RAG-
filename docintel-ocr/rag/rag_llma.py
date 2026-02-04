@@ -60,6 +60,290 @@
 #         break
 
 #     print("\nAnswer:\n", ask(q), "\n")
+# import os
+# import json
+# import uuid
+# import sqlite3
+# import re
+
+# from datetime import datetime
+
+# from langchain_community.vectorstores import FAISS
+# from langchain_huggingface import HuggingFaceEmbeddings
+# from langchain_ollama import OllamaLLM
+
+
+# # ------------------------
+# # PATH CONFIG (IMPORTANT)
+# # ------------------------
+
+# BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# DB_PATH = os.path.join(BASE_DIR, "documents.db")
+# DB_DIR = os.path.join(BASE_DIR, "db")
+# SNAPSHOT_DIR = os.path.join(BASE_DIR, "evidence_snapshots")
+
+
+# # ------------------------
+# # HELPERS
+# # ------------------------
+
+# def normalize(name):
+#     """
+#     Normalize filenames for matching
+#     """
+#     return name.lower().replace(" ", "_").replace(".pdf", "")
+
+
+# def get_latest_versions():
+
+#     conn = sqlite3.connect(DB_PATH)
+#     cur = conn.cursor()
+
+#     rows = cur.execute("""
+#         SELECT trial_id, doc_type, blob_path, version
+#         FROM documents
+#         WHERE status='approved'
+#     """).fetchall()
+
+#     conn.close()
+
+
+#     latest = {}
+
+#     for trial, dtype, blob, v in rows:
+
+#         key = (trial, dtype)
+
+#         try:
+#             num = float(v.replace("v", ""))
+#         except:
+#             num = 0.0
+
+
+#         if key not in latest or num > latest[key][0]:
+#             latest[key] = (num, blob)
+
+
+#     return latest
+
+
+# # ------------------------
+# # INIT
+# # ------------------------
+
+# # Embeddings
+# embeddings = HuggingFaceEmbeddings(
+#     model_name="sentence-transformers/all-MiniLM-L6-v2"
+# )
+
+
+# # Load Vector DB
+# db = FAISS.load_local(
+#     DB_DIR,
+#     embeddings,
+#     allow_dangerous_deserialization=True
+# )
+
+
+# # LLM
+# llm = OllamaLLM(
+#     model="llama3.2:3b"
+# )
+
+
+# # Ensure snapshot folder exists
+# os.makedirs(SNAPSHOT_DIR, exist_ok=True)
+
+
+# # ------------------------
+# # MAIN QUERY
+# # ------------------------
+
+# def ask(question):
+
+#     # Search wide
+#     docs_all = db.similarity_search(question, k=15)
+
+#     if not docs_all:
+#         return "No evidence found"
+
+
+#     # Get allowed docs from registry
+#     latest_map = get_latest_versions()
+
+
+#     allowed = set()
+
+#     for (_, blob) in latest_map.values():
+#         allowed.add(normalize(blob))
+
+
+#     # Filter vectors
+#     docs = []
+
+#     for d in docs_all:
+
+#         vec_doc = normalize(d.metadata.get("doc", ""))
+
+#         if vec_doc in allowed:
+
+#             docs.append(d)
+
+#         if len(docs) == 1:
+#             break
+
+
+#     if not docs:
+#         return "No evidence found (filtered by registry)"
+
+
+#     # Best doc
+#     d = docs[0]
+
+
+#     # ------------------------
+#     # META
+#     # ------------------------
+
+#     answer_id = "A" + uuid.uuid4().hex[:8]
+
+#     timestamp = datetime.utcnow().isoformat()
+
+
+#     doc = d.metadata.get("doc", "Unknown") + ".pdf"
+#     section = d.metadata.get("section", "Unknown")
+#     page = d.metadata.get("page", "Unknown")
+#     para = d.metadata.get("para", "Unknown")
+
+#     version = "v1.0"
+
+
+#     # ------------------------
+#     # QUOTE
+#     # ------------------------
+
+#     text = d.page_content.replace("\n", " ").strip()
+
+#     # Limit evidence to ~120 words
+
+#     words = text.split()
+
+#     MAX_WORDS = 120
+
+#     if len(words) > MAX_WORDS:
+#         short_text = " ".join(words[:MAX_WORDS]) + "..."
+#     else:
+#         short_text = text
+
+
+#     # Take first 1–2 sentences from short text
+#     sentences = re.split(r'(?<=[.!?])\s+', short_text)
+
+#     quote = " ".join(sentences[:2]).strip()
+
+#     if not quote.endswith((".", "!", "?")):
+#         quote += "."
+
+
+#     if not quote.endswith("."):
+#         quote += "."
+
+
+#     # ------------------------
+#     # SNAPSHOT
+#     # ------------------------
+
+#     snapshot = {
+#         "answer_id": answer_id,
+#         "document": doc,
+#         "version": version,
+#         "section": section,
+#         "page": page,
+#         "paragraph": para,
+#         "evidence_text": quote,
+#         "timestamp": timestamp
+#     }
+
+
+#     file_path = os.path.join(SNAPSHOT_DIR, f"{answer_id}.json")
+
+#     with open(file_path, "w", encoding="utf-8") as f:
+#         json.dump(snapshot, f, indent=2)
+
+
+#     # ------------------------
+#     # LLM
+#     # ------------------------
+
+#     context = d.page_content
+
+
+#     prompt = f"""
+# You are a regulatory document analyst.
+
+# Answer ONLY from context.
+
+# Context:
+# {context}
+
+# Question:
+# {question}
+
+# Rules:
+# - Be precise
+# - No hallucination
+# """
+
+
+#     answer = llm.invoke(prompt)
+
+
+#     # ------------------------
+#     # OUTPUT
+#     # ------------------------
+
+#     evidence_text = f"""
+# “{quote}”
+
+# According to {doc} → Section {section} → Page {page} → Paragraph {para}
+# """.strip()
+
+
+#     final = f"""
+# Answer ID: {answer_id}
+
+# Answer:
+# {answer}
+
+# Evidence:
+# {evidence_text}
+
+# Snapshot saved: {file_path}
+# """
+
+
+#     return final
+
+
+# # ------------------------
+# # CLI
+# # ------------------------
+
+# if __name__ == "__main__":
+
+#     print("RAG System Ready ✅")
+#     print("Type 'exit' to quit\n")
+
+
+#     while True:
+
+#         q = input("Ask> ")
+
+#         if q.lower() == "exit":
+#             break
+
+#         print(ask(q))
+
 import os
 import json
 import uuid
@@ -74,10 +358,11 @@ from langchain_ollama import OllamaLLM
 
 
 # ------------------------
-# PATH CONFIG (IMPORTANT)
+# PATH CONFIG
 # ------------------------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 DB_PATH = os.path.join(BASE_DIR, "documents.db")
 DB_DIR = os.path.join(BASE_DIR, "db")
 SNAPSHOT_DIR = os.path.join(BASE_DIR, "evidence_snapshots")
@@ -88,9 +373,6 @@ SNAPSHOT_DIR = os.path.join(BASE_DIR, "evidence_snapshots")
 # ------------------------
 
 def normalize(name):
-    """
-    Normalize filenames for matching
-    """
     return name.lower().replace(" ", "_").replace(".pdf", "")
 
 
@@ -107,7 +389,6 @@ def get_latest_versions():
 
     conn.close()
 
-
     latest = {}
 
     for trial, dtype, blob, v in rows:
@@ -119,10 +400,8 @@ def get_latest_versions():
         except:
             num = 0.0
 
-
         if key not in latest or num > latest[key][0]:
-            latest[key] = (num, blob)
-
+            latest[key] = (num, blob, v)
 
     return latest
 
@@ -131,13 +410,11 @@ def get_latest_versions():
 # INIT
 # ------------------------
 
-# Embeddings
 embeddings = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 
 
-# Load Vector DB
 db = FAISS.load_local(
     DB_DIR,
     embeddings,
@@ -145,13 +422,11 @@ db = FAISS.load_local(
 )
 
 
-# LLM
 llm = OllamaLLM(
     model="llama3.2:3b"
 )
 
 
-# Ensure snapshot folder exists
 os.makedirs(SNAPSHOT_DIR, exist_ok=True)
 
 
@@ -161,24 +436,23 @@ os.makedirs(SNAPSHOT_DIR, exist_ok=True)
 
 def ask(question):
 
-    # Search wide
+    # Search vectors
     docs_all = db.similarity_search(question, k=15)
 
     if not docs_all:
         return "No evidence found"
 
 
-    # Get allowed docs from registry
+    # Get approved docs
     latest_map = get_latest_versions()
-
 
     allowed = set()
 
-    for (_, blob) in latest_map.values():
+    for (_, blob, _) in latest_map.values():
         allowed.add(normalize(blob))
 
 
-    # Filter vectors
+    # Filter
     docs = []
 
     for d in docs_all:
@@ -186,7 +460,6 @@ def ask(question):
         vec_doc = normalize(d.metadata.get("doc", ""))
 
         if vec_doc in allowed:
-
             docs.append(d)
 
         if len(docs) == 1:
@@ -197,7 +470,7 @@ def ask(question):
         return "No evidence found (filtered by registry)"
 
 
-    # Best doc
+    # Best match
     d = docs[0]
 
 
@@ -209,7 +482,6 @@ def ask(question):
 
     timestamp = datetime.utcnow().isoformat()
 
-
     doc = d.metadata.get("doc", "Unknown") + ".pdf"
     section = d.metadata.get("section", "Unknown")
     page = d.metadata.get("page", "Unknown")
@@ -219,16 +491,28 @@ def ask(question):
 
 
     # ------------------------
-    # QUOTE
+    # SHORT EVIDENCE (1 LINE)
     # ------------------------
 
     text = d.page_content.replace("\n", " ").strip()
 
-    sentences = text.split(". ")
+# Split into sentences
+    sentences = re.split(r'(?<=[.!?])\s+', text)
 
-    quote = ". ".join(sentences[:2])
+    # Take first 2–3 sentences (for context)
+    chunk = " ".join(sentences[:3]).strip()
+    words = chunk.split()
 
-    if not quote.endswith("."):
+    MAX_EVIDENCE_WORDS = 30
+
+    if len(words) > MAX_EVIDENCE_WORDS:
+        quote = " ".join(words[:MAX_EVIDENCE_WORDS]) + "..."
+    else:
+        quote = chunk
+
+    # Ensure punctuation
+    # Ensure punctuation
+    if not quote.endswith((".", "!", "?")):
         quote += "."
 
 
@@ -255,7 +539,7 @@ def ask(question):
 
 
     # ------------------------
-    # LLM
+    # LLM (LONG ANSWER)
     # ------------------------
 
     context = d.page_content
@@ -273,8 +557,9 @@ Question:
 {question}
 
 Rules:
-- Be precise
+- Give detailed explanation
 - No hallucination
+- Cite only from context
 """
 
 
@@ -285,10 +570,9 @@ Rules:
     # OUTPUT
     # ------------------------
 
-    evidence_text = f"""
-“{quote}”
+    evidence_text = f"""“{quote}”
 
-According to {doc} → Section {section} → Page {page} → Paragraph {para}
+{doc} → Section {section} → Page {page} → Paragraph {para}
 """.strip()
 
 
@@ -302,7 +586,7 @@ Evidence:
 {evidence_text}
 
 Snapshot saved: {file_path}
-"""
+""".strip()
 
 
     return final
