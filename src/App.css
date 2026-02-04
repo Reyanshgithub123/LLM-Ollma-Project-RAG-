@@ -60,6 +60,7 @@ body {
 
 .page {
   padding: 32px;
+  min-height: 400px;
 }
 
 

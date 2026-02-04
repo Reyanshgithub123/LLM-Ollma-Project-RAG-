@@ -1,9 +1,11 @@
 export default function AuditTrailScreen() {
 
   return (
-    <div className="p-6">
-      <h2 className="text-xl font-bold">Audit Trail</h2>
-      <p>Audit logs will appear here.</p>
+    <div>
+      <h2 className="section-title">Audit Trail</h2>
+      <div className="card">
+        <p>Audit logs will appear here.</p>
+      </div>
     </div>
   );
 }

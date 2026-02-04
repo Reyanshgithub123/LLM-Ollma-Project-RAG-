@@ -1,9 +1,11 @@
 export default function ProtocolChangesScreen() {
 
   return (
-    <div className="p-6">
-      <h2 className="text-xl font-bold">Protocol Changes</h2>
-      <p>Version comparison coming soon.</p>
+    <div>
+      <h2 className="section-title">Protocol Changes</h2>
+      <div className="card">
+        <p>Version comparison coming soon.</p>
+      </div>
     </div>
   );
 }
