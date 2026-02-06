@@ -34,3 +34,4 @@ export const getAuditLogs = () => {
 export const getStats = () => {
   return api.get("/audit/stats");
 };
+export const getRecentUploads = () => api.get("/recent-uploads");

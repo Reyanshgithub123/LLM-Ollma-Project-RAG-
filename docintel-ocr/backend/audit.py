@@ -83,3 +83,20 @@ def get_stats():
         "ai": ai,
         "alerts": alerts
     }
+
+def get_recent_uploads(limit=5):
+
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    rows = cur.execute("""
+    SELECT message, timestamp
+    FROM audit_logs
+    WHERE event_type = 'upload'
+    ORDER BY id DESC
+    LIMIT ?
+    """, (limit,)).fetchall()
+
+    conn.close()
+
+    return rows

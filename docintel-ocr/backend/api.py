@@ -94,7 +94,8 @@ from backend.audit import (
     init_db,
     log_event,
     get_logs,
-    get_stats
+    get_stats,
+    get_recent_uploads
 )
 
 from rag.rag_llma import ask
@@ -282,3 +283,26 @@ def fetch_logs():
 def fetch_stats():
 
     return get_stats()
+
+# -------------------------
+# RECENT UPLOADS
+# -------------------------
+
+@app.get("/recent-uploads")
+def fetch_recent_uploads():
+
+    rows = get_recent_uploads()
+
+    data = []
+
+    for msg, ts in rows:
+
+        # msg = "Uploaded file.pdf"
+        name = msg.replace("Uploaded ", "")
+
+        data.append({
+            "name": name,
+            "time": ts
+        })
+
+    return data

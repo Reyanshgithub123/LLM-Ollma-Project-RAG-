@@ -19,7 +19,20 @@ export default function App() {
         {/* NAV */}
         <div className="navbar">
 
-          <h1>Clinical Trial Intelligence</h1>
+        <div className="nav-brand">
+
+    <img
+      src="/assets/logo.png"
+      alt="DataEra Logo"
+      className="nav-logo"
+    />
+
+    <div>
+      <h1 className="nav-title">DataEra</h1>
+      <p className="nav-subtitle">Clinical Trial Intelligence</p>
+    </div>
+
+  </div>
 
           <div className="nav-links">
 

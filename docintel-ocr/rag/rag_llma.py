@@ -349,6 +349,8 @@ import json
 import uuid
 import sqlite3
 import re
+import time
+
 from datetime import datetime
 
 from langchain_community.vectorstores import FAISS
@@ -357,7 +359,7 @@ from langchain_ollama import OllamaLLM
 
 
 # ------------------------
-# PATH CONFIG
+# PATHS
 # ------------------------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -366,9 +368,19 @@ DB_PATH = os.path.join(BASE_DIR, "documents.db")
 DB_DIR = os.path.join(BASE_DIR, "db")
 SNAPSHOT_DIR = os.path.join(BASE_DIR, "evidence_snapshots")
 
+os.makedirs(SNAPSHOT_DIR, exist_ok=True)
+
 
 # ------------------------
-# INIT MODELS (ONCE)
+# GLOBAL CACHE
+# ------------------------
+
+_vector_db = None
+_last_db_mtime = 0
+
+
+# ------------------------
+# MODELS
 # ------------------------
 
 embeddings = HuggingFaceEmbeddings(
@@ -379,63 +391,39 @@ llm = OllamaLLM(
     model="llama3.2:3b"
 )
 
-os.makedirs(SNAPSHOT_DIR, exist_ok=True)
-
 
 # ------------------------
-# HELPERS
+# DB AUTO RELOAD
 # ------------------------
-
-def normalize(name):
-    return name.lower().replace(" ", "_").replace(".pdf", "")
-
-
-def get_latest_versions():
-
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-
-    rows = cur.execute("""
-        SELECT trial_id, doc_type, blob_path, version
-        FROM documents
-        WHERE status='approved'
-    """).fetchall()
-
-    conn.close()
-
-    latest = {}
-
-    for trial, dtype, blob, v in rows:
-
-        key = (trial, dtype)
-
-        try:
-            num = float(v.replace("v", ""))
-        except:
-            num = 0.0
-
-        if key not in latest or num > latest[key][0]:
-            latest[key] = (num, blob, v)
-
-    return latest
-
 
 def load_vector_db():
     """
-    Reload FAISS every time (HOT RELOAD)
+    Reload FAISS when index file changes
     """
 
-    if not os.path.exists(DB_DIR):
-        raise Exception("Vector DB not found")
+    global _vector_db, _last_db_mtime
 
-    return
+    index_file = os.path.join(DB_DIR, "index.faiss")
 
+    if not os.path.exists(index_file):
+        raise Exception("FAISS index not found")
 
-    FAISS.load_local(
-        DB_DIR,
-        embeddings,
-        allow_dangerous_deserialization=True
-    )
+    mtime = os.path.getmtime(index_file)
+
+    if _vector_db is None or mtime != _last_db_mtime:
+
+        print("🔄 Reloading Vector DB (index updated)...")
+
+        _vector_db = FAISS.load_local(
+            DB_DIR,
+            embeddings,
+            allow_dangerous_deserialization=True
+        )
+
+        _last_db_mtime = mtime
+
+    return _vector_db
+
 
 
 # ------------------------
@@ -444,47 +432,17 @@ def load_vector_db():
 
 def ask(question):
 
-    # 🔥 RELOAD VECTOR DB EVERY QUERY
-    db = FAISS.load_local(
-        DB_DIR,
-        embeddings,
-        allow_dangerous_deserialization=True
-    )
+    # Always get latest DB
+    db = load_vector_db()
 
-    # Search vectors
-    docs_all = db.similarity_search(question, k=15)
+    # Search
+    docs = db.similarity_search(question, k=15)
 
-    if not docs_all:
+    if not docs:
         return "No evidence found"
 
 
-    # Get approved docs
-    latest_map = get_latest_versions()
-
-    allowed = set()
-
-    for (_, blob, _) in latest_map.values():
-        allowed.add(normalize(blob))
-
-
-    # Filter
-    docs = []
-
-    for d in docs_all:
-
-        vec_doc = normalize(d.metadata.get("doc", ""))
-
-        if vec_doc in allowed:
-            docs.append(d)
-
-        if len(docs) == 1:
-            break
-
-
-    if not docs:
-        return "No evidence found (filtered by registry)"
-
-
+    # Best match
     d = docs[0]
 
 
@@ -501,11 +459,9 @@ def ask(question):
     page = d.metadata.get("page", "Unknown")
     para = d.metadata.get("para", "Unknown")
 
-    version = "v1.0"
-
 
     # ------------------------
-    # SHORT EVIDENCE (1 LINE)
+    # SHORT EVIDENCE
     # ------------------------
 
     text = d.page_content.replace("\n", " ").strip()
@@ -523,7 +479,6 @@ def ask(question):
     else:
         quote = chunk
 
-
     if not quote.endswith((".", "!", "?")):
         quote += "."
 
@@ -535,7 +490,6 @@ def ask(question):
     snapshot = {
         "answer_id": answer_id,
         "document": doc,
-        "version": version,
         "section": section,
         "page": page,
         "paragraph": para,
@@ -543,8 +497,10 @@ def ask(question):
         "timestamp": timestamp
     }
 
-
-    file_path = os.path.join(SNAPSHOT_DIR, f"{answer_id}.json")
+    file_path = os.path.join(
+        SNAPSHOT_DIR,
+        f"{answer_id}.json"
+    )
 
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(snapshot, f, indent=2)
@@ -579,7 +535,7 @@ Rules:
 
     # ------------------------
     # OUTPUT
-    # ------------------------
+    
 
     evidence_text = f"""“{quote}”
 
@@ -610,7 +566,6 @@ Snapshot saved: {file_path}
 if __name__ == "__main__":
 
     print("RAG System Ready ✅")
-    print("Type 'exit' to quit\n")
 
     while True:
 

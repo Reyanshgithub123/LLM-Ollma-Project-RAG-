@@ -1,0 +1,275 @@
+/* Main Card */
+.card {
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 18px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e5e7eb;
+}
+
+/* Section Title */
+.section-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 15px;
+  color: #1f2937;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 8px;
+}
+
+/* Log Row */
+.log-row {
+  padding: 14px 0;
+  border-bottom: 1px solid #f1f1f1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Last Row Border Remove */
+.log-row:last-child {
+  border-bottom: none;
+}
+
+/* Event + Message */
+.log-main {
+  font-size: 14px;
+  color: #111827;
+}
+
+.log-main b {
+  color: #2563eb;
+  text-transform: uppercase;
+}
+
+/* Meta Info */
+.log-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* Meta Item */
+.log-meta span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Hover Effect */
+.log-row:hover {
+  background: #f9fafb;
+  transition: 0.2s;
+}
+
+/* Stats Card */
+.stat-card {
+  background: linear-gradient(135deg, #eff6ff, #ffffff);
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+  border: 1px solid #dbeafe;
+}
+
+.stat-value {
+  font-size: 26px;
+  font-weight: 700;
+  color: #1d4ed8;
+}
+
+.stat-title {
+  font-size: 13px;
+  color: #4b5563;
+}
+
+/* Filter Bar */
+.filter-bar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Filter Button */
+.filter-btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  border-radius: 20px;
+  border: 1px solid #d1d5db;
+  background: white;
+  cursor: pointer;
+  color: #374151;
+  transition: 0.2s;
+}
+
+.filter-btn:hover {
+  background: #f3f4f6;
+}
+
+/* Active Filter */
+.filter-btn.active {
+  background: #2563eb;
+  color: white;
+  border-color: #2563eb;
+}
+/* Upload Loader */
+.upload-loader {
+  font-size: 13px;
+  color: #2563eb;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Success Message */
+.upload-success {
+  font-size: 14px;
+  color: #15803d;
+  background: #dcfce7;
+  border: 1px solid #86efac;
+  padding: 8px 12px;
+  border-radius: 6px;
+  display: inline-block;
+  margin-top: 6px;
+  font-weight: 500;
+}
+
+/* Disabled Button */
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ================= STATS GRID ================= */
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+
+/* ================= STAT BOX ================= */
+
+.stat-box {
+  background: white;
+  border-radius: 12px;
+  padding: 16px 18px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  transition: 0.2s;
+}
+
+.stat-box:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+
+/* Title */
+.stat-header {
+  font-size: 13px;
+  color: #6b7280;
+  margin-bottom: 10px;
+}
+
+
+/* Main Row */
+.stat-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+
+/* Value */
+.stat-number {
+  font-size: 26px;
+  font-weight: 700;
+  color: #111827;
+}
+
+
+/* Change Indicator */
+.stat-change {
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+/* Green */
+.stat-change.positive {
+  color: #16a34a;
+}
+
+/* Red */
+.stat-change.negative {
+  color: #dc2626;
+}
+
+/* ================= RECENT UPLOADS PREMIUM ================= */
+
+.recent-row {
+  padding: 12px 10px;
+  border-bottom: 1px solid #eef2f7;
+  transition: 0.2s;
+}
+
+.recent-row:last-child {
+  border-bottom: none;
+}
+
+.recent-row:hover {
+  background: #f8fafc;
+}
+
+
+/* Left Layout */
+.recent-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+
+/* File Icon */
+.file-icon {
+  width: 36px;
+  height: 36px;
+  background: #eff6ff;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+
+/* Info Section */
+.recent-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+
+/* File Name */
+.recent-name {
+  font-weight: 600;
+  color: #111827;
+  font-size: 14px;
+  max-width: 320px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+/* Time */
+.recent-time {
+  font-size: 12px;
+  color: #6b7280;
+}
